@@ -71,9 +71,16 @@ if errorlevel 1 (
 
 echo.
 echo === [4/5] Preparing exiftool.exe ===
-set EXIFTOOL_VER=13.55
+REM exiftool.org keeps only the LATEST version on the server, so we
+REM scrape the homepage for the current version number first, and
+REM fall back to a known-good version if scraping fails.
+set EXIFTOOL_FALLBACK_VER=13.58
+set EXIFTOOL_VER=
+for /f "delims=" %%v in ('powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; try { $h=(Invoke-WebRequest -Uri 'https://exiftool.org/' -UseBasicParsing).Content; if ($h -match 'exiftool-([0-9]+\.[0-9]+)_64\.zip') { $matches[1] } } catch {}"') do set EXIFTOOL_VER=%%v
+if not defined EXIFTOOL_VER set EXIFTOOL_VER=%EXIFTOOL_FALLBACK_VER%
 set EXIFTOOL_ZIP=exiftool-%EXIFTOOL_VER%_64.zip
 set EXIFTOOL_URL=https://exiftool.org/%EXIFTOOL_ZIP%
+echo Using exiftool version: %EXIFTOOL_VER%
 
 if not exist "exiftool_bundle\exiftool.exe" (
   echo Downloading exiftool from %EXIFTOOL_URL% ...
