@@ -13,7 +13,11 @@
 1. 把整个项目目录复制到 Windows 机器上（U 盘 / 网盘 / git clone 任选）
 2. 在项目根目录双击 `build.bat`
 3. 等待几分钟（首次会下载依赖 + exiftool，约 50MB）
-4. 完成后输出在 `dist\PhotoOrganizer.exe`，单文件、可直接双击运行
+4. 完成后输出在 `dist\` 文件夹：
+   - `PhotoOrganizer.exe` —— 主程序，双击运行
+   - `exiftool.exe` —— 必须和主程序在同一文件夹
+   - `exiftool_files\` —— exiftool 的 Perl 运行时，同样必须保留
+5. **分发时打包整个 `dist\` 文件夹**（不是单个 .exe）。少了任何一项 CR3/HEIC/视频的拍摄时间就读不出，文件会进 `unknown/`
 
 ## build.bat 做了什么
 
@@ -21,11 +25,21 @@
 2. 创建 `.venv` 虚拟环境并激活
 3. `pip install -r requirements.txt pyinstaller`
 4. 下载 exiftool Windows 版（约 5MB）解压到 `exiftool_bundle\`
-5. 用 PyInstaller 单文件模式打包，`--add-binary` 把 exiftool 一起塞进 .exe
+5. 用 PyInstaller `--onefile` 打包主程序，再把 `exiftool.exe` + `exiftool_files\` 复制到 `dist\` 旁边
+
+## 为什么 exiftool 不塞进 .exe 内部
+
+现在的 exiftool Windows 包是「`exiftool.exe` 壳 + `exiftool_files\`（含 perl.exe + 一棵 Strawberry-Perl `lib\` 树）」。
+PyInstaller 在 `--add-data` 时会做 binary/data 重分类，把 `exiftool_files\lib\auto\...` 里的 .dll 挪到别处，
+破坏 Perl 期望的目录结构，运行时报 `Can't locate strict.pm in @INC`。
+所以打包脚本改成把 exiftool 整棵子树原样放在 `dist\` 里 .exe 旁边，
+`organize_photos.py` 的 `_find_exiftool()` 会自动找到。
 
 ## 体积参考
 
-- `PhotoOrganizer.exe` ≈ 40~60 MB（包含 Python 运行时 + Pillow + customtkinter + exiftool）
+- `dist\PhotoOrganizer.exe` ≈ 40~50 MB（Python 运行时 + Pillow + customtkinter）
+- `dist\exiftool.exe` + `dist\exiftool_files\` ≈ 25 MB
+- 整个 `dist\` 文件夹 ≈ 60~75 MB
 
 ## 如果自动下载 exiftool 失败
 

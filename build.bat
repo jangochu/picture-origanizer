@@ -138,14 +138,17 @@ if exist "dist\PhotoOrganizer.exe" (
   )
 )
 
-set "ADD_BIN=exiftool_bundle\exiftool.exe;."
-set "ADD_DATA="
-if exist "exiftool_bundle\exiftool_files" set "ADD_DATA=--add-data exiftool_bundle\exiftool_files;exiftool_files"
+REM We deliberately do NOT bundle exiftool inside the .exe.
+REM Modern exiftool Windows ships as a wrapper exe + exiftool_files\ tree
+REM (with perl.exe and a Strawberry-Perl lib tree). PyInstaller's
+REM "binary vs data reclassification" rearranges files inside
+REM _MEIPASS\exiftool_files\, breaking Perl's @INC and making exiftool
+REM fail at runtime with "Can't locate strict.pm in @INC".
+REM Instead we drop exiftool alongside PhotoOrganizer.exe in dist\.
+REM _find_exiftool() in organize_photos.py already picks it up there.
 
 pyinstaller --noconfirm --clean --onefile --windowed ^
   --name PhotoOrganizer ^
-  --add-binary "%ADD_BIN%" ^
-  %ADD_DATA% ^
   organize_photos_gui.py
 if errorlevel 1 (
   echo PyInstaller failed.
@@ -154,9 +157,31 @@ if errorlevel 1 (
 )
 
 echo.
+echo Copying exiftool sidecar into dist\ ...
+copy /y "exiftool_bundle\exiftool.exe" "dist\exiftool.exe" >nul
+if errorlevel 1 (
+  echo Failed to copy exiftool.exe into dist\.
+  pause
+  exit /b 1
+)
+if exist "exiftool_bundle\exiftool_files" (
+  if exist "dist\exiftool_files" rmdir /s /q "dist\exiftool_files"
+  xcopy /s /e /i /q /y "exiftool_bundle\exiftool_files" "dist\exiftool_files" >nul
+  if errorlevel 1 (
+    echo Failed to copy exiftool_files\ into dist\.
+    pause
+    exit /b 1
+  )
+)
+
+echo.
 echo ============================================================
-echo SUCCESS! Output: dist\PhotoOrganizer.exe
-echo Just double-click it to run. No extra install needed.
+echo SUCCESS! Output folder: dist\
+echo   - PhotoOrganizer.exe  (main, double-click to run)
+echo   - exiftool.exe        (sidecar, must stay next to main exe)
+echo   - exiftool_files\     (Perl runtime for exiftool, must stay too)
+echo.
+echo To distribute, zip the WHOLE dist\ folder, not just the .exe.
 echo ============================================================
 pause
 endlocal
