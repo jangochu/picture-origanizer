@@ -69,6 +69,10 @@ def _find_exiftool() -> str | None:
 EXIFTOOL_BIN = _find_exiftool()
 HAS_EXIFTOOL = EXIFTOOL_BIN is not None
 
+# 记录最近一次 exiftool 调用的失败原因（subprocess 非零退出/异常/无可用时间标签），
+# organize() 在该文件最终落入 unknown/ 时会播报出来，方便排查 bundling 之类静默失败。
+_EXIFTOOL_LAST_ERROR: str | None = None
+
 
 # 常见 EXIF 日期格式: "2024:03:15 14:23:01"
 _DATE_PATTERNS = (
@@ -146,7 +150,10 @@ def get_date_via_exifread(path: Path) -> datetime | None:
 
 def get_date_via_exiftool(path: Path) -> datetime | None:
     """通用兜底：调用 exiftool 读取多个时间字段，覆盖 CR3/HEIC/视频 等绝大多数格式。"""
+    global _EXIFTOOL_LAST_ERROR
+    _EXIFTOOL_LAST_ERROR = None
     if not HAS_EXIFTOOL:
+        _EXIFTOOL_LAST_ERROR = "exiftool 不可用（未找到可执行文件）"
         return None
     tags = (
         "-DateTimeOriginal", "-CreateDate", "-MediaCreateDate",
@@ -159,6 +166,11 @@ def get_date_via_exiftool(path: Path) -> datetime | None:
             capture_output=True, text=True, timeout=15,
         )
         if result.returncode != 0:
+            _EXIFTOOL_LAST_ERROR = (
+                f"exiftool 退出码 {result.returncode}; "
+                f"stderr={result.stderr.strip()[:300]!r}; "
+                f"stdout={result.stdout.strip()[:300]!r}"
+            )
             return None
         for line in result.stdout.splitlines():
             line = line.strip()
@@ -167,7 +179,13 @@ def get_date_via_exiftool(path: Path) -> datetime | None:
             parsed = parse_exif_date(line)
             if parsed and parsed.year > 1970:
                 return parsed
-    except (subprocess.TimeoutExpired, OSError):
+        _EXIFTOOL_LAST_ERROR = (
+            f"exiftool 返回 0 但解析不到有效时间; "
+            f"stdout={result.stdout.strip()[:300]!r}; "
+            f"stderr={result.stderr.strip()[:200]!r}"
+        )
+    except (subprocess.TimeoutExpired, OSError) as e:
+        _EXIFTOOL_LAST_ERROR = f"exiftool 调用异常: {e!r}"
         return None
     return None
 
@@ -316,6 +334,10 @@ def organize(src: Path, dst: Path, reporter: ProgressReporter | None = None) -> 
             if date is None:
                 stats.unknown += 1
                 reporter.on_file(idx, total, src_path, target, date, "unknown")
+                # 该文件最终落入 unknown/，如果是 exiftool 失败导致，把原因播报出来，
+                # 否则用户只能看到一个孤零零的 unknown，没法排查（CR3/HEIC/视频之类一般都是 exiftool 兜底的）。
+                if _EXIFTOOL_LAST_ERROR:
+                    reporter.on_error(src_path, RuntimeError(f"[exiftool] {_EXIFTOOL_LAST_ERROR}"))
             else:
                 stats.moved += 1
                 reporter.on_file(idx, total, src_path, target, date, "moved")
