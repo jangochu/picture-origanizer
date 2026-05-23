@@ -118,6 +118,26 @@ echo exiftool ready: exiftool_bundle\exiftool.exe
 
 echo.
 echo === [5/5] Packaging with PyInstaller ===
+REM If a previous PhotoOrganizer.exe is still running (or held by Explorer /
+REM antivirus), PyInstaller's final EXE write will fail with WinError 5.
+REM Probe by trying to delete it first and give a clear hint.
+if exist "dist\PhotoOrganizer.exe" (
+  del /f /q "dist\PhotoOrganizer.exe" 2>nul
+  if exist "dist\PhotoOrganizer.exe" (
+    echo.
+    echo ERROR: dist\PhotoOrganizer.exe is locked - cannot overwrite.
+    echo.
+    echo Likely cause: a previous PhotoOrganizer.exe is still running.
+    echo Fix:
+    echo   1. Close every PhotoOrganizer window
+    echo   2. Open Task Manager, end any "PhotoOrganizer.exe" process
+    echo   3. Then run build.bat again
+    echo.
+    pause
+    exit /b 1
+  )
+)
+
 set "ADD_BIN=exiftool_bundle\exiftool.exe;."
 set "ADD_DATA="
 if exist "exiftool_bundle\exiftool_files" set "ADD_DATA=--add-data exiftool_bundle\exiftool_files;exiftool_files"
